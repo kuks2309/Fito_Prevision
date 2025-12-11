@@ -1,0 +1,609 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1600</width>
+    <height>900</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Vision Pre Comparison Tool</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <layout class="QHBoxLayout" name="horizontalLayout_viewers">
+      <item>
+       <widget class="QGroupBox" name="groupBoxHalcon">
+        <property name="title">
+         <string>Fnc_Vision_Pre.cpp (Halcon 기반)</string>
+        </property>
+        <layout class="QVBoxLayout" name="verticalLayout_halcon">
+         <item>
+          <widget class="QLabel" name="labelHalconImage">
+           <property name="minimumSize">
+            <size>
+             <width>750</width>
+             <height>500</height>
+            </size>
+           </property>
+           <property name="frameShape">
+            <enum>QFrame::Box</enum>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+           <property name="text">
+            <string>이미지 없음</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="labelHalconInfo">
+           <property name="text">
+            <string>Camera: OFF | Size: 0x0 | Status: Ready</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="groupBoxOpenCV">
+        <property name="title">
+         <string>Fnc_Vision_Pre_FITO.cpp (OpenCV 기반)</string>
+        </property>
+        <layout class="QVBoxLayout" name="verticalLayout_opencv">
+         <item>
+          <widget class="QLabel" name="labelOpenCVImage">
+           <property name="minimumSize">
+            <size>
+             <width>750</width>
+             <height>500</height>
+            </size>
+           </property>
+           <property name="frameShape">
+            <enum>QFrame::Box</enum>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+           <property name="text">
+            <string>이미지 없음</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="labelOpenCVInfo">
+           <property name="text">
+            <string>Camera: OFF | Size: 0x0 | Calibration: Not Loaded</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <widget class="QGroupBox" name="groupBoxControl">
+      <property name="title">
+       <string>제어 패널</string>
+      </property>
+      <layout class="QHBoxLayout" name="horizontalLayout_control">
+       <item>
+        <widget class="QPushButton" name="btnLoadImage">
+         <property name="text">
+          <string>이미지 열기</string>
+         </property>
+         <property name="icon">
+          <iconset theme="document-open"/>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnGrab">
+         <property name="text">
+          <string>Grab</string>
+         </property>
+         <property name="icon">
+          <iconset theme="camera-photo"/>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnContinuousGrab">
+         <property name="text">
+          <string>연속 Grab</string>
+         </property>
+         <property name="icon">
+          <iconset theme="media-playback-start"/>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnStop">
+         <property name="text">
+          <string>정지</string>
+         </property>
+         <property name="enabled">
+          <bool>false</bool>
+         </property>
+         <property name="icon">
+          <iconset theme="media-playback-stop"/>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="Line" name="line">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="label_viewMode">
+         <property name="text">
+          <string>표시 모드:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QComboBox" name="comboViewMode">
+         <item>
+          <property name="text">
+           <string>Raw Image</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>Gain Image</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>Binary Image</string>
+          </property>
+         </item>
+        </widget>
+       </item>
+       <item>
+        <widget class="Line" name="line_2">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="label_gain">
+         <property name="text">
+          <string>Gain:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QDoubleSpinBox" name="spinGain">
+         <property name="minimum">
+          <double>0.100000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>10.000000000000000</double>
+         </property>
+         <property name="singleStep">
+          <double>0.100000000000000</double>
+         </property>
+         <property name="value">
+          <double>1.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="label_offset">
+         <property name="text">
+          <string>Offset:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSpinBox" name="spinOffset">
+         <property name="minimum">
+          <number>-255</number>
+         </property>
+         <property name="maximum">
+          <number>255</number>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="label_threshold">
+         <property name="text">
+          <string>Binary:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSpinBox" name="spinThreshold">
+         <property name="maximum">
+          <number>255</number>
+         </property>
+         <property name="value">
+          <number>128</number>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="horizontalSpacer">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>40</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+    </item>
+    <item>
+     <widget class="QGroupBox" name="groupBoxAnalysis">
+      <property name="title">
+       <string>비교 분석 결과</string>
+      </property>
+      <layout class="QGridLayout" name="gridLayout">
+       <item row="0" column="0">
+        <widget class="QLabel" name="label_header1">
+         <property name="text">
+          <string>항목</string>
+         </property>
+         <property name="font">
+          <font>
+           <weight>75</weight>
+           <bold>true</bold>
+          </font>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QLabel" name="label_header2">
+         <property name="text">
+          <string>Halcon</string>
+         </property>
+         <property name="font">
+          <font>
+           <weight>75</weight>
+           <bold>true</bold>
+          </font>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="2">
+        <widget class="QLabel" name="label_header3">
+         <property name="text">
+          <string>OpenCV FITO</string>
+         </property>
+         <property name="font">
+          <font>
+           <weight>75</weight>
+           <bold>true</bold>
+          </font>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="0">
+        <widget class="QLabel" name="label_processTime">
+         <property name="text">
+          <string>처리 시간 (ms):</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="1">
+        <widget class="QLabel" name="labelHalconTime">
+         <property name="text">
+          <string>-</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="2">
+        <widget class="QLabel" name="labelOpenCVTime">
+         <property name="text">
+          <string>-</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="0">
+        <widget class="QLabel" name="label_edgeCount">
+         <property name="text">
+          <string>Edge 검출 개수:</string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="1">
+        <widget class="QLabel" name="labelHalconEdges">
+         <property name="text">
+          <string>-</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="2">
+        <widget class="QLabel" name="labelOpenCVEdges">
+         <property name="text">
+          <string>-</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="0">
+        <widget class="QLabel" name="label_templateMatch">
+         <property name="text">
+          <string>템플릿 매칭 점수:</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="1">
+        <widget class="QLabel" name="labelHalconMatch">
+         <property name="text">
+          <string>-</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="2">
+        <widget class="QLabel" name="labelOpenCVMatch">
+         <property name="text">
+          <string>N/A</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="0">
+        <widget class="QLabel" name="label_calibration">
+         <property name="text">
+          <string>왜곡 보정:</string>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="1">
+        <widget class="QLabel" name="labelHalconCalib">
+         <property name="text">
+          <string>N/A</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="2">
+        <widget class="QLabel" name="labelOpenCVCalib">
+         <property name="text">
+          <string>-</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="0">
+        <widget class="QLabel" name="label_reprojection">
+         <property name="text">
+          <string>재투영 오차 (픽셀):</string>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="1">
+        <widget class="QLabel" name="labelHalconReproj">
+         <property name="text">
+          <string>N/A</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="2">
+        <widget class="QLabel" name="labelOpenCVReproj">
+         <property name="text">
+          <string>-</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1600</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title">
+     <string>파일(&amp;F)</string>
+    </property>
+    <addaction name="actionLoadImage"/>
+    <addaction name="actionSaveImage"/>
+    <addaction name="separator"/>
+    <addaction name="actionExit"/>
+   </widget>
+   <widget class="QMenu" name="menuView">
+    <property name="title">
+     <string>보기(&amp;V)</string>
+    </property>
+    <addaction name="actionZoomIn"/>
+    <addaction name="actionZoomOut"/>
+    <addaction name="actionZoomFit"/>
+    <addaction name="separator"/>
+    <addaction name="actionShowGrid"/>
+   </widget>
+   <widget class="QMenu" name="menuAnalysis">
+    <property name="title">
+     <string>분석(&amp;A)</string>
+    </property>
+    <addaction name="actionCompare"/>
+    <addaction name="actionDifferenceMap"/>
+    <addaction name="actionHistogram"/>
+   </widget>
+   <widget class="QMenu" name="menuSettings">
+    <property name="title">
+     <string>설정(&amp;S)</string>
+    </property>
+    <addaction name="actionCameraSettings"/>
+    <addaction name="actionCalibrationSettings"/>
+    <addaction name="actionPreferences"/>
+   </widget>
+   <widget class="QMenu" name="menuHelp">
+    <property name="title">
+     <string>도움말(&amp;H)</string>
+    </property>
+    <addaction name="actionUserManual"/>
+    <addaction name="separator"/>
+    <addaction name="actionAbout"/>
+   </widget>
+   <addaction name="menuFile"/>
+   <addaction name="menuView"/>
+   <addaction name="menuAnalysis"/>
+   <addaction name="menuSettings"/>
+   <addaction name="menuHelp"/>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <action name="actionLoadImage">
+   <property name="text">
+    <string>이미지 열기(&amp;O)</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+O</string>
+   </property>
+  </action>
+  <action name="actionSaveImage">
+   <property name="text">
+    <string>이미지 저장(&amp;S)</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+S</string>
+   </property>
+  </action>
+  <action name="actionExit">
+   <property name="text">
+    <string>종료(&amp;X)</string>
+   </property>
+   <property name="shortcut">
+    <string>Alt+F4</string>
+   </property>
+  </action>
+  <action name="actionZoomIn">
+   <property name="text">
+    <string>확대(&amp;I)</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl++</string>
+   </property>
+  </action>
+  <action name="actionZoomOut">
+   <property name="text">
+    <string>축소(&amp;O)</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+-</string>
+   </property>
+  </action>
+  <action name="actionZoomFit">
+   <property name="text">
+    <string>화면 맞춤(&amp;F)</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+0</string>
+   </property>
+  </action>
+  <action name="actionShowGrid">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>그리드 표시(&amp;G)</string>
+   </property>
+  </action>
+  <action name="actionCompare">
+   <property name="text">
+    <string>비교 분석(&amp;C)</string>
+   </property>
+   <property name="shortcut">
+    <string>F5</string>
+   </property>
+  </action>
+  <action name="actionDifferenceMap">
+   <property name="text">
+    <string>차이 맵(&amp;D)</string>
+   </property>
+  </action>
+  <action name="actionHistogram">
+   <property name="text">
+    <string>히스토그램(&amp;H)</string>
+   </property>
+  </action>
+  <action name="actionCameraSettings">
+   <property name="text">
+    <string>카메라 설정(&amp;C)</string>
+   </property>
+  </action>
+  <action name="actionCalibrationSettings">
+   <property name="text">
+    <string>캘리브레이션 설정(&amp;L)</string>
+   </property>
+  </action>
+  <action name="actionPreferences">
+   <property name="text">
+    <string>환경 설정(&amp;P)</string>
+   </property>
+  </action>
+  <action name="actionUserManual">
+   <property name="text">
+    <string>사용자 매뉴얼(&amp;U)</string>
+   </property>
+   <property name="shortcut">
+    <string>F1</string>
+   </property>
+  </action>
+  <action name="actionAbout">
+   <property name="text">
+    <string>정보(&amp;A)</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
