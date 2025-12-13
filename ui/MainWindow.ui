@@ -603,6 +603,15 @@
     <string>정보(&amp;A)</string>
    </property>
   </action>
+  <widget class="QDockWidget" name="dockProcessing">
+   <property name="windowTitle">
+    <string>Image Processing</string>
+   </property>
+   <attribute name="dockWidgetArea">
+    <number>2</number>
+   </attribute>
+   <widget class="QWidget" name="dockWidgetContents"/>
+  </widget>
  </widget>
  <resources/>
  <connections/>

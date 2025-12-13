@@ -18,7 +18,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 # Qt5 찾기
-find_package(Qt5 REQUIRED COMPONENTS Core Widgets Gui)
+find_package(Qt5 REQUIRED COMPONENTS Core Widgets Gui Network)
 
 # OpenCV 찾기
 # 기존 D:\OpenCV 사용 (vc15 버전)
@@ -50,6 +50,11 @@ set(SOURCES
     src/main.cpp
     src/MainWindow.cpp
     src/ImageViewer.cpp
+    src/ImageProcessingPanel.cpp
+    src/EdgeProcessingWidget.cpp
+    src/LineDetectionWidget.cpp
+    src/AIPrevisionWidget.cpp
+    src/TEEDClient.cpp
     # src/ControlPanel.cpp
     # src/VisionWrapper/VisionPreWrapper.cpp
     # src/VisionWrapper/VisionPreFITOWrapper.cpp
@@ -61,6 +66,11 @@ set(SOURCES
 set(HEADERS
     src/MainWindow.h
     src/ImageViewer.h
+    src/ImageProcessingPanel.h
+    src/EdgeProcessingWidget.h
+    src/LineDetectionWidget.h
+    src/AIPrevisionWidget.h
+    src/TEEDClient.h
     # src/ControlPanel.h
     # src/VisionWrapper/VisionPreWrapper.h
     # src/VisionWrapper/VisionPreFITOWrapper.h
@@ -69,6 +79,9 @@ set(HEADERS
 
 set(UI_FILES
     ui/MainWindow.ui
+    ui/EdgeProcessingWidget.ui
+    ui/LineDetectionWidget.ui
+    ui/AIPrevisionWidget.ui
     # ui/ControlPanel.ui
     # ui/AnalysisPanel.ui
 )
@@ -88,6 +101,7 @@ target_link_libraries(${PROJECT_NAME}
     Qt5::Core
     Qt5::Widgets
     Qt5::Gui
+    Qt5::Network
 )
 
 # OpenCV 라이브러리

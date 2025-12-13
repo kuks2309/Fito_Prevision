@@ -25,6 +25,18 @@ struct VisionResult {
     std::vector<cv::Vec4f> lines;
 };
 
+// TEED 직선 정보 구조체
+struct TEEDLineInfo {
+    float coef1, coef2;     // 방정식 계수 (수평: y=ax+b, 수직: x=cy+d)
+    float length;           // 직선 길이
+};
+
+// TEED 직선 클러스터 구조체
+struct TEEDLineCluster {
+    float coef1, coef2;     // 평균 계수
+    float totalLength;      // 총 길이
+};
+
 // 원본 프로젝트 매크로 주석 처리
 // #define DECLARE_DYNAMIC(class_name)
 // #define IMPLEMENT_RUNTIMECLASS(class_name)
@@ -129,6 +141,59 @@ public:
                                                     std::vector<cv::Vec4f>& cartesianLines,
                                                     int nWidth, int nHeight);
 
+    // ✅ TEED 공유 메모리 인터페이스
+    bool				TEED_Connect(int height = 512, int width = 608);
+    void				TEED_Disconnect();
+    bool				TEED_IsConnected() const { return m_bTeedConnected; }
+
+    /**
+     * @brief TEED 추론 실행 (BGR 이미지 입력)
+     * @param inputBGR 입력 BGR 이미지 (원본 크기)
+     * @param outputEdge 출력 Edge map (축소된 크기, CV_8UC1)
+     * @param timeoutMs 타임아웃 (밀리초, 기본 5000ms)
+     * @return 성공 여부
+     */
+    bool				TEED_Inference(const cv::Mat& inputBGR, cv::Mat& outputEdge, int timeoutMs = 5000);
+
+    /**
+     * @brief TEED 추론 실행 (BYTE 버퍼 입력, Grayscale)
+     * @param pSrc 입력 Grayscale 버퍼
+     * @param nWidth 입력 이미지 너비
+     * @param nHeight 입력 이미지 높이
+     * @param outputEdge 출력 Edge map
+     * @param timeoutMs 타임아웃 (밀리초)
+     * @return 성공 여부
+     */
+    bool				TEED_InferenceFromGray(const BYTE* pSrc, int nWidth, int nHeight,
+                                               cv::Mat& outputEdge, int timeoutMs = 5000);
+
+    /**
+     * @brief TEED Edge map에서 수평/수직 직선 추출
+     * @param edgeMap 입력 Edge map (CV_8UC1)
+     * @param hLines 출력 수평선 리스트
+     * @param vLines 출력 수직선 리스트
+     * @param threshold 이진화 threshold (기본 50)
+     * @param minLength 최소 선 길이 (기본 30)
+     * @param maxGap 최대 gap (기본 10)
+     * @param angleTolerance 수평/수직 허용 각도 (기본 30도)
+     * @return 성공 여부
+     */
+    bool				TEED_ExtractLines(const cv::Mat& edgeMap,
+                                          std::vector<TEEDLineInfo>& hLines,
+                                          std::vector<TEEDLineInfo>& vLines,
+                                          int threshold = 50, int minLength = 30,
+                                          int maxGap = 10, float angleTolerance = 30.0f);
+
+    /**
+     * @brief 직선들을 절편 기준으로 클러스터링
+     * @param lines 입력 직선 리스트
+     * @param clusters 출력 클러스터 리스트
+     * @param distThreshold 클러스터링 거리 threshold (기본 10픽셀)
+     */
+    void				TEED_ClusterLines(const std::vector<TEEDLineInfo>& lines,
+                                          std::vector<TEEDLineCluster>& clusters,
+                                          float distThreshold = 10.0f);
+
 private:
     // 원본 프로젝트 커맨드 함수들 (주석 처리 - 독립 실행 시 불필요)
     // enumFunctionResult Act_Initial(std::string strArg, structFunctionResult* pstFunctionResult);
@@ -141,6 +206,10 @@ private:
 
     // ✅ OpenCV 캘리브레이션 내부 함수 (유지)
     void				InitUndistortMaps();
+
+    // ✅ TEED 전처리 헬퍼
+    void				TEED_Preprocess(const cv::Mat& inputBGR, float* outputTensor,
+                                        int& outHeight, int& outWidth);
 
 private:
     // 로깅 (주석 처리 - 독립 실행 시 불필요)
@@ -233,4 +302,25 @@ private:
     bool m_bMapsInitialized;         // 맵 초기화 완료 여부
     double m_dReprojectionError;     // RMS 재투영 오차
     bool m_bUseCalibration;          // 캘리브레이션 사용 여부 플래그
+
+    // ✅ TEED 공유 메모리 변수
+    HANDLE m_hTeedInputMapping;      // 입력 공유 메모리 핸들
+    HANDLE m_hTeedOutputMapping;     // 출력 공유 메모리 핸들
+    BYTE* m_pTeedInputBuffer;        // 입력 버퍼 포인터
+    BYTE* m_pTeedOutputBuffer;       // 출력 버퍼 포인터
+    bool m_bTeedConnected;           // TEED 연결 상태
+    int m_nTeedHeight;               // TEED 입력 높이
+    int m_nTeedWidth;                // TEED 입력 너비
+    HANDLE m_hTeedProcess;           // Python 서버 프로세스 핸들
+
+    // TEED 공유 메모리 상수
+    static constexpr int TEED_HEADER_SIZE = 8;  // height(4) + width(4)
+    static constexpr const char* TEED_INPUT_NAME = "teed_input";
+    static constexpr const char* TEED_OUTPUT_NAME = "teed_output";
+
+    // TEED Python 서버 경로 (필요시 수정)
+    std::string m_strTeedServerPath;
+
+    // Python 서버 실행 헬퍼
+    bool TEED_LaunchServer(int height, int width);
 };
