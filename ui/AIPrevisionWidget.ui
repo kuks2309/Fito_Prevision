@@ -265,6 +265,13 @@
         </property>
        </widget>
       </item>
+      <item>
+       <widget class="QLabel" name="labelServerTime">
+        <property name="text">
+         <string>Server Time: 0 ms</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>

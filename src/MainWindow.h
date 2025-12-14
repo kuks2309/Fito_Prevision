@@ -10,6 +10,7 @@
 #include "EdgeProcessingWidget.h"
 #include "LineDetectionWidget.h"
 #include "AIPrevisionWidget.h"
+#include "HalconVisionWidget.h"
 #include "Vision/Fnc_Vision_Pre_FITO.h"
 
 QT_BEGIN_NAMESPACE
@@ -96,6 +97,12 @@ private slots:
     void onAIShowOriginalSizeRequested();
     void onAIResetRequested();
 
+    // Halcon Vision
+    void onHalconAlgorithmChanged(HalconVisionWidget::HalconAlgorithm algorithm);
+    void onHalconParametersChanged();
+    void onHalconFindCornerRequested();
+    void onHalconResetRequested();
+
 private:
     Ui::MainWindow *ui;
 
@@ -167,6 +174,7 @@ private:
     QImage m_currentInputImage;
     QImage m_currentProcessedImage;
     QImage m_currentEdgeImage;  // Edge 처리 결과 (Line Detection용)
+    cv::Mat m_currentInputMat;  // cv::Mat BGR (TEED용 - 로드 시 한 번만 변환)
 
     // TEED Vision Processor (서버 종료용)
     Fnc_Vision_Pre_FITO m_visionProcessorForShutdown;

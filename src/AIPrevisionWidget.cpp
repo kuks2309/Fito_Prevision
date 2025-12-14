@@ -132,6 +132,11 @@ void AIPrevisionWidget::setExecutionTime(double ms)
     ui->labelExecutionTime->setText(QString("Execution Time: %1 ms").arg(ms, 0, 'f', 2));
 }
 
+void AIPrevisionWidget::setServerTime(double ms)
+{
+    ui->labelServerTime->setText(QString("Server Time: %1 ms").arg(ms, 0, 'f', 2));
+}
+
 void AIPrevisionWidget::onAlgorithmSelected(int row, int column)
 {
     Q_UNUSED(column);

@@ -41,6 +41,7 @@ public:
     void setResult(double posX, double posY);
     void setOriginalCoord(double posX, double posY);
     void setExecutionTime(double ms);
+    void setServerTime(double ms);
 
 signals:
     void algorithmChanged(AIAlgorithm algorithm);

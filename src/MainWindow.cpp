@@ -81,6 +81,19 @@ MainWindow::MainWindow(QWidget *parent)
                 this, &MainWindow::onAIResetRequested);
     }
 
+    // Connect Halcon Vision signals
+    HalconVisionWidget* halconWidget = m_pProcessingPanel->getHalconWidget();
+    if (halconWidget) {
+        connect(halconWidget, &HalconVisionWidget::algorithmChanged,
+                this, &MainWindow::onHalconAlgorithmChanged);
+        connect(halconWidget, &HalconVisionWidget::parametersChanged,
+                this, &MainWindow::onHalconParametersChanged);
+        connect(halconWidget, &HalconVisionWidget::findCornerRequested,
+                this, &MainWindow::onHalconFindCornerRequested);
+        connect(halconWidget, &HalconVisionWidget::resetRequested,
+                this, &MainWindow::onHalconResetRequested);
+    }
+
     // TEED 서버 초기화
     initTEEDServer();
 
@@ -292,6 +305,10 @@ void MainWindow::onLoadImage()
                     .arg(QFileInfo(fileName).fileName())
                     .arg(image.width())
                     .arg(image.height()));
+
+    // 이미지 로드 시점에 cv::Mat으로 변환 (TEED용 - 한 번만 변환)
+    m_currentInputImage = image;
+    m_currentInputMat = QImageToCvMat(image);
 
     updateStatusBar(QString("이미지 로드: %1 (%2x%3)")
                     .arg(QFileInfo(fileName).fileName())
@@ -1283,30 +1300,16 @@ QImage MainWindow::applyCNNMLCCPanelEdge(const QImage& input)
 
 QImage MainWindow::applyTEEDEdgeDetection(const QImage& input)
 {
-    if (input.isNull()) {
-        QMessageBox::warning(this, "TEED Error", "Input image is null.");
+    Q_UNUSED(input);  // 이제 m_currentInputMat 사용
+
+    // 미리 변환된 cv::Mat 사용 (이미지 로드 시점에 변환됨)
+    if (m_currentInputMat.empty()) {
+        QMessageBox::warning(this, "TEED Error", "Input image is empty. Please load an image first.");
         return QImage();
     }
 
-    updateStatusBar("TEED Edge Detection: Connecting to server...");
+    updateStatusBar("TEED Edge Detection: Processing...");
     QApplication::processEvents();
-
-    // QImage -> cv::Mat 변환 (BGR)
-    cv::Mat inputMat = QImageToCvMat(input);
-    if (inputMat.empty()) {
-        QMessageBox::warning(this, "TEED Error", "Failed to convert image to cv::Mat.");
-        return QImage();
-    }
-
-    // Grayscale이면 BGR로 변환
-    cv::Mat bgrMat;
-    if (inputMat.channels() == 1) {
-        cv::cvtColor(inputMat, bgrMat, cv::COLOR_GRAY2BGR);
-    } else if (inputMat.channels() == 4) {
-        cv::cvtColor(inputMat, bgrMat, cv::COLOR_BGRA2BGR);
-    } else {
-        bgrMat = inputMat;
-    }
 
     // TEED 추론 (m_visionProcessorForShutdown 사용 - 프로그램 시작 시 연결된 서버 재사용)
     cv::Mat edgeMap;
@@ -1317,10 +1320,10 @@ QImage MainWindow::applyTEEDEdgeDetection(const QImage& input)
         QApplication::processEvents();
     }
 
-    updateStatusBar("TEED Edge Detection: Processing...");
-    QApplication::processEvents();
+    // 서버 통신 시간 측정 시작
+    auto serverStartTime = std::chrono::high_resolution_clock::now();
 
-    if (!m_visionProcessorForShutdown.TEED_Inference(bgrMat, edgeMap, 15000)) {
+    if (!m_visionProcessorForShutdown.TEED_Inference(m_currentInputMat, edgeMap, 15000)) {
         QMessageBox::warning(this, "TEED Error",
             QString("TEED inference failed.\n\n"
             "Please check:\n"
@@ -1329,9 +1332,21 @@ QImage MainWindow::applyTEEDEdgeDetection(const QImage& input)
             "3. Image size: %1x%2\n\n"
             "Try running Python server manually:\n"
             "python D:\\FITO_2026\\TEED\\teed_shared_memory.py")
-            .arg(bgrMat.cols).arg(bgrMat.rows));
+            .arg(m_currentInputMat.cols).arg(m_currentInputMat.rows));
         return QImage();
     }
+
+    // 서버 통신 시간 측정 종료
+    auto serverEndTime = std::chrono::high_resolution_clock::now();
+    double serverTime = std::chrono::duration<double, std::milli>(serverEndTime - serverStartTime).count();
+
+    // 서버 시간 UI 업데이트
+    AIPrevisionWidget* aiWidget = m_pProcessingPanel->getAIWidget();
+    if (aiWidget) {
+        aiWidget->setServerTime(serverTime);
+    }
+
+    qDebug() << "[TEED] Server communication time:" << serverTime << "ms";
 
     // Edge map -> QImage 변환
     if (edgeMap.empty()) {
@@ -1974,4 +1989,148 @@ void MainWindow::stopTEEDServer()
     }
 
     qDebug() << "[MainWindow] TEED server stopped";
+}
+
+// ========================================================================
+// Halcon Vision
+// ========================================================================
+
+void MainWindow::onHalconAlgorithmChanged(HalconVisionWidget::HalconAlgorithm algorithm)
+{
+    Q_UNUSED(algorithm);
+    updateStatusBar(QString("Halcon Algorithm changed"));
+}
+
+void MainWindow::onHalconParametersChanged()
+{
+    updateStatusBar("Halcon Parameters changed");
+}
+
+void MainWindow::onHalconFindCornerRequested()
+{
+    qDebug() << "[MainWindow] onHalconFindCornerRequested called";
+
+    HalconVisionWidget* halconWidget = m_pProcessingPanel->getHalconWidget();
+    if (!halconWidget) {
+        qDebug() << "[MainWindow] halconWidget is null";
+        return;
+    }
+
+    // Halcon 뷰어에서 현재 이미지 가져오기
+    m_currentInputImage = m_pHalconViewer->getImage();
+
+    if (m_currentInputImage.isNull()) {
+        QMessageBox::warning(this, "Halcon Vision Error",
+            "No input image loaded.\n\n"
+            "Please load an image first.");
+        return;
+    }
+
+    updateStatusBar("Halcon Vision: Finding Corner...");
+    QApplication::processEvents();
+
+    // 시작 시간 측정
+    auto startTime = std::chrono::high_resolution_clock::now();
+
+#ifdef HALCON_FOUND
+    // 코너 타입 가져오기
+    int nCorner = static_cast<int>(halconWidget->getCornerType());
+
+    // Shape Model 생성 (처음 한 번만)
+    if (!halconWidget->m_bModelInitialized) {
+        updateStatusBar("Halcon Vision: Creating Shape Models...");
+        QApplication::processEvents();
+
+        for (int i = 0; i < 4; i++) {
+            halconWidget->HV_PreVisionCreateTemplate(i);
+        }
+        halconWidget->m_bModelInitialized = true;
+    }
+
+    // 코너 검출 수행
+    HalconVisionResult result = halconWidget->HV_PreVisionFindCornerTemplate(nCorner, m_currentInputImage);
+
+    // 종료 시간 측정
+    auto endTime = std::chrono::high_resolution_clock::now();
+    double elapsedMs = std::chrono::duration<double, std::milli>(endTime - startTime).count();
+
+    // 결과 표시
+    halconWidget->setResult(result.dPositionX, result.dPositionY, result.dScore);
+    halconWidget->setExecutionTime(elapsedMs);
+
+    if (result.bExist && result.bResult) {
+        // 결과 이미지에 코너 위치 표시
+        QImage resultImage = m_currentInputImage.copy();
+        QPainter painter(&resultImage);
+        painter.setPen(QPen(Qt::red, 3));
+
+        // 십자 표시
+        int crossSize = 30;
+        int x = static_cast<int>(result.dPositionX);
+        int y = static_cast<int>(result.dPositionY);
+        painter.drawLine(x - crossSize, y, x + crossSize, y);
+        painter.drawLine(x, y - crossSize, x, y + crossSize);
+
+        // 원 표시
+        painter.drawEllipse(QPoint(x, y), 20, 20);
+
+        // 좌표 텍스트
+        painter.setFont(QFont("Arial", 12, QFont::Bold));
+        painter.drawText(x + 25, y - 5,
+            QString("(%1, %2) Score: %3%")
+            .arg(result.dPositionX, 0, 'f', 1)
+            .arg(result.dPositionY, 0, 'f', 1)
+            .arg(result.dScore, 0, 'f', 1));
+        painter.end();
+
+        m_pHalconViewer->setImage(resultImage);
+        m_pHalconViewer->setInfo(QString("Halcon Corner Found: (%1, %2)")
+                                 .arg(result.dPositionX, 0, 'f', 1)
+                                 .arg(result.dPositionY, 0, 'f', 1));
+
+        updateStatusBar(QString("Halcon Vision completed in %1 ms - Position: (%2, %3), Score: %4%")
+                        .arg(elapsedMs, 0, 'f', 1)
+                        .arg(result.dPositionX, 0, 'f', 1)
+                        .arg(result.dPositionY, 0, 'f', 1)
+                        .arg(result.dScore, 0, 'f', 1));
+    } else {
+        updateStatusBar(QString("Halcon Vision: Corner not found (Time: %1 ms)")
+                        .arg(elapsedMs, 0, 'f', 1));
+    }
+#else
+    // Halcon 미설치 시 메시지
+    QMessageBox::information(this, "Halcon Vision",
+        "Halcon library is not available.\n\n"
+        "Please install Halcon to use this feature.\n"
+        "This is a stub for comparison with AI Prevision.");
+
+    // 종료 시간 측정
+    auto endTime = std::chrono::high_resolution_clock::now();
+    double elapsedMs = std::chrono::duration<double, std::milli>(endTime - startTime).count();
+    halconWidget->setExecutionTime(elapsedMs);
+
+    updateStatusBar("Halcon Vision: Library not available");
+#endif
+}
+
+void MainWindow::onHalconResetRequested()
+{
+    qDebug() << "[MainWindow] onHalconResetRequested called";
+
+    // 원본 이미지로 복원
+    if (!m_currentInputImage.isNull()) {
+        m_pHalconViewer->setImage(m_currentInputImage);
+        m_pHalconViewer->setInfo(QString("Original Image (%1x%2)")
+                                 .arg(m_currentInputImage.width())
+                                 .arg(m_currentInputImage.height()));
+    }
+
+    // UI 결과 초기화
+    HalconVisionWidget* halconWidget = m_pProcessingPanel->getHalconWidget();
+    if (halconWidget) {
+        halconWidget->setResult(0, 0, 0);
+        halconWidget->setExecutionTime(0);
+    }
+
+    updateStatusBar("Reset to original image");
 }
