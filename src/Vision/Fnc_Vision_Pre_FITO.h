@@ -37,6 +37,13 @@ struct TEEDLineCluster {
     float totalLength;      // 총 길이
 };
 
+// TEED 교점 결과 구조체
+struct TEEDIntersectionResult {
+    bool bFound;            // 교점 발견 여부
+    float cropX, cropY;     // 축소 이미지 좌표
+    float origX, origY;     // 원본 이미지 좌표
+};
+
 // 원본 프로젝트 매크로 주석 처리
 // #define DECLARE_DYNAMIC(class_name)
 // #define IMPLEMENT_RUNTIMECLASS(class_name)
@@ -193,6 +200,21 @@ public:
     void				TEED_ClusterLines(const std::vector<TEEDLineInfo>& lines,
                                           std::vector<TEEDLineCluster>& clusters,
                                           float distThreshold = 10.0f);
+
+    /**
+     * @brief 수평선과 수직선의 교점 계산 및 원본 좌표 변환
+     * @param hLine 수평선 클러스터 (y = ax + b)
+     * @param vLine 수직선 클러스터 (x = cy + d)
+     * @param cropWidth 축소 이미지 너비
+     * @param cropHeight 축소 이미지 높이
+     * @param origWidth 원본 이미지 너비
+     * @param origHeight 원본 이미지 높이
+     * @return TEEDIntersectionResult 교점 좌표 (축소/원본)
+     */
+    TEEDIntersectionResult TEED_FindIntersection(const TEEDLineCluster& hLine,
+                                                  const TEEDLineCluster& vLine,
+                                                  int cropWidth, int cropHeight,
+                                                  int origWidth, int origHeight);
 
 private:
     // 원본 프로젝트 커맨드 함수들 (주석 처리 - 독립 실행 시 불필요)

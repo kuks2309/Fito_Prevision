@@ -28,12 +28,19 @@ message(STATUS "OpenCV version: ${OpenCV_VERSION}")
 message(STATUS "OpenCV libraries: ${OpenCV_LIBS}")
 
 # Halcon 설정 (경로는 실제 설치 경로로 수정 필요)
-set(HALCON_DIR "C:/Program Files/MVTec/HALCON-20.11")
+set(HALCON_DIR "C:/Program Files/MVTec/HALCON-23.05-Progress")
+set(HALCON_FOUND FALSE)
 if(EXISTS ${HALCON_DIR})
+    set(HALCON_FOUND TRUE)
     include_directories(${HALCON_DIR}/include)
+    include_directories(${HALCON_DIR}/include/halconcpp)
     link_directories(${HALCON_DIR}/lib/x64-win64)
+    # HALCON_FOUND를 전역으로 정의 (AUTOMOC이 실행되기 전에 적용)
+    add_compile_definitions(HALCON_FOUND=1)
+    message(STATUS "Halcon found: ${HALCON_DIR}")
 else()
     message(WARNING "Halcon directory not found: ${HALCON_DIR}")
+    message(WARNING "Halcon features will be disabled")
 endif()
 
 # MultiCam 설정 (경로는 실제 설치 경로로 수정 필요)
@@ -54,6 +61,7 @@ set(SOURCES
     src/EdgeProcessingWidget.cpp
     src/LineDetectionWidget.cpp
     src/AIPrevisionWidget.cpp
+    src/HalconVisionWidget.cpp
     src/TEEDClient.cpp
     # src/ControlPanel.cpp
     # src/VisionWrapper/VisionPreWrapper.cpp
@@ -70,6 +78,7 @@ set(HEADERS
     src/EdgeProcessingWidget.h
     src/LineDetectionWidget.h
     src/AIPrevisionWidget.h
+    src/HalconVisionWidget.h
     src/TEEDClient.h
     # src/ControlPanel.h
     # src/VisionWrapper/VisionPreWrapper.h
@@ -82,6 +91,7 @@ set(UI_FILES
     ui/EdgeProcessingWidget.ui
     ui/LineDetectionWidget.ui
     ui/AIPrevisionWidget.ui
+    ui/HalconVisionWidget.ui
     # ui/ControlPanel.ui
     # ui/AnalysisPanel.ui
 )
@@ -109,7 +119,7 @@ target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
 message(STATUS "OpenCV found: ${OpenCV_VERSION}")
 
 # Halcon 라이브러리 (있는 경우에만)
-if(EXISTS ${HALCON_DIR})
+if(HALCON_FOUND)
     target_link_libraries(${PROJECT_NAME}
         halcon
         halconcpp

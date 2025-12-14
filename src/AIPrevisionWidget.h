@@ -37,12 +37,20 @@ public:
     float getAngleTolerance() const;
     float getClusterDistance() const;
 
+    // 결과 표시
+    void setResult(double posX, double posY);
+    void setOriginalCoord(double posX, double posY);
+    void setExecutionTime(double ms);
+
 signals:
     void algorithmChanged(AIAlgorithm algorithm);
     void parametersChanged();
     void applyRequested();
     void houghLinesRequested();
     void clusteringRequested();
+    void findIntersectionRequested();
+    void runAllRequested();
+    void showOriginalSizeRequested();
     void resetRequested();
 
 private slots:
@@ -50,6 +58,9 @@ private slots:
     void onApplyClicked();
     void onHoughLinesClicked();
     void onClusteringClicked();
+    void onFindIntersectionClicked();
+    void onRunAllClicked();
+    void onShowOriginalSizeClicked();
     void onResetClicked();
     void onParameterChanged();
     void onSaveParamsClicked();

@@ -181,9 +181,40 @@
       </widget>
      </item>
      <item>
+      <widget class="QPushButton" name="btnFindIntersection">
+       <property name="text">
+        <string>Find Intersection</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <widget class="QPushButton" name="btnReset">
        <property name="text">
         <string>Reset</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayoutRunAll">
+     <item>
+      <widget class="QPushButton" name="btnRunAll">
+       <property name="text">
+        <string>Run All (Edge + Hough + Clustering + Intersection)</string>
+       </property>
+       <property name="styleSheet">
+        <string>background-color: #4CAF50; color: white; font-weight: bold;</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnShowOriginalSize">
+       <property name="text">
+        <string>Show Original Size</string>
+       </property>
+       <property name="styleSheet">
+        <string>background-color: #2196F3; color: white; font-weight: bold;</string>
        </property>
       </widget>
      </item>
@@ -206,6 +237,36 @@
       </widget>
      </item>
     </layout>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupResult">
+     <property name="title">
+      <string>Result</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayoutResult">
+      <item>
+       <widget class="QLabel" name="labelResult">
+        <property name="text">
+         <string>Intersection: X=0, Y=0</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelOriginalCoord">
+        <property name="text">
+         <string>Original: X=0, Y=0</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelExecutionTime">
+        <property name="text">
+         <string>Execution Time: 0 ms</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
    </item>
    <item>
     <spacer name="verticalSpacer">

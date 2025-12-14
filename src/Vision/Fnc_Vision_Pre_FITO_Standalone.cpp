@@ -452,9 +452,9 @@ bool Fnc_Vision_Pre_FITO::TEED_LaunchServer(int height, int width)
 	}
 
 	// Python 명령어 구성
-	char cmdLine[512];
+	char cmdLine[1024];
 	snprintf(cmdLine, sizeof(cmdLine),
-		"python \"%s\" --height %d --width %d",
+		"python \"%s\" --height %d --width %d --checkpoint \"D:\\FITO_2026\\TEED\\weights\\Prevision_MLCC\\deploy\\best_model.pth\"",
 		m_strTeedServerPath.c_str(), height, width);
 
 	STARTUPINFOA si = { sizeof(si) };
@@ -1005,4 +1005,89 @@ void Fnc_Vision_Pre_FITO::TEED_ClusterLines(const std::vector<TEEDLineInfo>& lin
 	          });
 
 	printf("[TEED] ClusterLines: %zu lines -> %zu clusters\n", lines.size(), clusters.size());
+}
+
+// ========================================================================
+// ✅ TEED_FindIntersection - 수평선/수직선 교점 계산 및 원본 좌표 변환
+// ========================================================================
+TEEDIntersectionResult Fnc_Vision_Pre_FITO::TEED_FindIntersection(
+    const TEEDLineCluster& hLine,
+    const TEEDLineCluster& vLine,
+    int cropWidth, int cropHeight,
+    int origWidth, int origHeight)
+{
+    TEEDIntersectionResult result;
+    result.bFound = false;
+    result.cropX = 0.0f;
+    result.cropY = 0.0f;
+    result.origX = 0.0f;
+    result.origY = 0.0f;
+
+    // 수평선: y = a*x + b (a = hLine.coef1, b = hLine.coef2)
+    // 수직선: x = c*y + d (c = vLine.coef1, d = vLine.coef2)
+    //
+    // 연립방정식 풀이:
+    // x = c*y + d
+    // y = a*x + b = a*(c*y + d) + b = a*c*y + a*d + b
+    // y - a*c*y = a*d + b
+    // y*(1 - a*c) = a*d + b
+    // y = (a*d + b) / (1 - a*c)
+    // x = c*y + d
+
+    float a = hLine.coef1;
+    float b = hLine.coef2;
+    float c = vLine.coef1;
+    float d = vLine.coef2;
+
+    float denominator = 1.0f - a * c;
+
+    // 분모가 0에 가까우면 평행선 (교점 없음)
+    if (std::abs(denominator) < 1e-6f)
+    {
+        printf("[TEED] FindIntersection: Lines are parallel (denominator=%.6f)\n", denominator);
+        return result;
+    }
+
+    // 교점 계산 (축소 이미지 좌표)
+    float cropY = (a * d + b) / denominator;
+    float cropX = c * cropY + d;
+
+    // 유효 범위 체크
+    if (cropX < 0 || cropX >= cropWidth || cropY < 0 || cropY >= cropHeight)
+    {
+        printf("[TEED] FindIntersection: Out of bounds (%.2f, %.2f) vs (%d, %d)\n",
+               cropX, cropY, cropWidth, cropHeight);
+        // 범위를 벗어나도 결과는 반환 (경계 근처일 수 있음)
+    }
+
+    result.cropX = cropX;
+    result.cropY = cropY;
+
+    // 원본 좌표로 변환
+    // 축소 이미지는 원본을 32배수로 crop 후 1/4로 축소한 것
+    // crop offset 계산
+    int h_crop = (origHeight / 32) * 32;
+    int w_crop = (origWidth / 32) * 32;
+    int y_offset = (origHeight - h_crop) / 2;
+    int x_offset = (origWidth - w_crop) / 2;
+
+    // 원본 좌표 = 축소좌표 * 4 + crop_offset
+    result.origX = cropX * 4.0f + static_cast<float>(x_offset);
+    result.origY = cropY * 4.0f + static_cast<float>(y_offset);
+
+    result.bFound = true;
+
+    printf("[TEED] FindIntersection: crop(%.2f, %.2f) -> orig(%.2f, %.2f)\n",
+           result.cropX, result.cropY, result.origX, result.origY);
+
+    // Fnc_Vision_Pre.cpp와 동일한 방식으로 멤버 변수에 결과 저장
+    // 이미지 중심 기준 상대 좌표로 저장
+    stVisionResult.bSuccess = true;
+    stVisionResult.corners.clear();
+    stVisionResult.corners.push_back(cv::Point2f(
+        result.origX - (origWidth / 2.0f),
+        result.origY - (origHeight / 2.0f)
+    ));
+
+    return result;
 }

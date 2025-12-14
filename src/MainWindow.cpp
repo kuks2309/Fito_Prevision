@@ -6,6 +6,7 @@
 #include <QPainter>
 #include <QDir>
 #include <QFileInfoList>
+#include <chrono>
 #include "Vision/Fnc_Vision_Pre_FITO.h"
 
 MainWindow::MainWindow(QWidget *parent)
@@ -70,15 +71,27 @@ MainWindow::MainWindow(QWidget *parent)
                 this, &MainWindow::onAIHoughLinesRequested);
         connect(aiWidget, &AIPrevisionWidget::clusteringRequested,
                 this, &MainWindow::onAIClusteringRequested);
+        connect(aiWidget, &AIPrevisionWidget::findIntersectionRequested,
+                this, &MainWindow::onAIFindIntersectionRequested);
+        connect(aiWidget, &AIPrevisionWidget::runAllRequested,
+                this, &MainWindow::onAIRunAllRequested);
+        connect(aiWidget, &AIPrevisionWidget::showOriginalSizeRequested,
+                this, &MainWindow::onAIShowOriginalSizeRequested);
         connect(aiWidget, &AIPrevisionWidget::resetRequested,
                 this, &MainWindow::onAIResetRequested);
     }
+
+    // TEED 서버 초기화
+    initTEEDServer();
 
     updateStatusBar("Ready");
 }
 
 MainWindow::~MainWindow()
 {
+    // TEED 서버 종료
+    stopTEEDServer();
+
     delete ui;
 }
 
@@ -252,7 +265,7 @@ void MainWindow::onLoadImage()
     QString fileName = QFileDialog::getOpenFileName(
         this,
         "이미지 열기",
-        "D:/Image/20240229_pre",
+        "D:/Image/PreVision",
         "Images (*.bmp *.png *.jpg *.jpeg *.tiff);;All Files (*.*)"
     );
 
@@ -269,7 +282,16 @@ void MainWindow::onLoadImage()
 
     // 좌우 이미지에 동일한 이미지 로드
     m_pHalconViewer->setImage(image);
+    m_pHalconViewer->setInfo(QString("Loaded: %1 | Size: %2x%3")
+                    .arg(QFileInfo(fileName).fileName())
+                    .arg(image.width())
+                    .arg(image.height()));
+
     m_pOpenCVViewer->setImage(image);
+    m_pOpenCVViewer->setInfo(QString("Loaded: %1 | Size: %2x%3")
+                    .arg(QFileInfo(fileName).fileName())
+                    .arg(image.width())
+                    .arg(image.height()));
 
     updateStatusBar(QString("이미지 로드: %1 (%2x%3)")
                     .arg(QFileInfo(fileName).fileName())
@@ -1186,7 +1208,27 @@ void MainWindow::onAIApplyRequested()
 
 void MainWindow::onAIResetRequested()
 {
-    updateStatusBar("AI Parameters reset");
+    // 원본 이미지로 복원
+    if (!m_currentInputImage.isNull()) {
+        m_pOpenCVViewer->setImage(m_currentInputImage);
+        m_pOpenCVViewer->setInfo(QString("Original Image (%1x%2)")
+                                 .arg(m_currentInputImage.width())
+                                 .arg(m_currentInputImage.height()));
+    }
+
+    // Edge 이미지 초기화
+    m_currentEdgeImage = QImage();
+    m_currentProcessedImage = QImage();
+
+    // UI 결과 초기화
+    AIPrevisionWidget* aiWidget = m_pProcessingPanel->getAIWidget();
+    if (aiWidget) {
+        aiWidget->setResult(0, 0);
+        aiWidget->setOriginalCoord(0, 0);
+        aiWidget->setExecutionTime(0);
+    }
+
+    updateStatusBar("Reset to original image");
 }
 
 void MainWindow::applyAIPrevision(AIPrevisionWidget::AIAlgorithm algorithm)
@@ -1266,12 +1308,11 @@ QImage MainWindow::applyTEEDEdgeDetection(const QImage& input)
         bgrMat = inputMat;
     }
 
-    // TEED 추론
-    static Fnc_Vision_Pre_FITO visionProcessor;
+    // TEED 추론 (m_visionProcessorForShutdown 사용 - 프로그램 시작 시 연결된 서버 재사용)
     cv::Mat edgeMap;
 
     // 연결 상태 확인
-    if (!visionProcessor.TEED_IsConnected()) {
+    if (!m_visionProcessorForShutdown.TEED_IsConnected()) {
         updateStatusBar("TEED Edge Detection: Starting Python server...");
         QApplication::processEvents();
     }
@@ -1279,7 +1320,7 @@ QImage MainWindow::applyTEEDEdgeDetection(const QImage& input)
     updateStatusBar("TEED Edge Detection: Processing...");
     QApplication::processEvents();
 
-    if (!visionProcessor.TEED_Inference(bgrMat, edgeMap, 15000)) {
+    if (!m_visionProcessorForShutdown.TEED_Inference(bgrMat, edgeMap, 15000)) {
         QMessageBox::warning(this, "TEED Error",
             QString("TEED inference failed.\n\n"
             "Please check:\n"
@@ -1298,44 +1339,20 @@ QImage MainWindow::applyTEEDEdgeDetection(const QImage& input)
         return QImage();
     }
 
-    // 원본 크기 및 crop 정보 계산 (TEED_Preprocess와 동일한 로직)
-    int origHeight = bgrMat.rows;
-    int origWidth = bgrMat.cols;
-    int h_crop = (origHeight / 32) * 32;
-    int w_crop = (origWidth / 32) * 32;
-    int x_offset = (origWidth - w_crop) / 2;
-    int y_offset = (origHeight - h_crop) / 2;
+    qDebug() << "[TEED] Edge map size:" << edgeMap.cols << "x" << edgeMap.rows;
 
-    qDebug() << "[TEED] Original:" << origWidth << "x" << origHeight
-             << "Crop:" << w_crop << "x" << h_crop
-             << "Offset:" << x_offset << "," << y_offset;
-
-    // 1. edge map을 crop 영역 크기로 4배 확대
-    cv::Mat resizedCrop;
-    cv::resize(edgeMap, resizedCrop, cv::Size(w_crop, h_crop), 0, 0, cv::INTER_LINEAR);
-
-    // 2. 원본 크기의 검은 배경 이미지 생성
-    cv::Mat fullEdge = cv::Mat::zeros(origHeight, origWidth, CV_8UC1);
-
-    // 3. crop된 결과를 원래 위치에 복사
-    resizedCrop.copyTo(fullEdge(cv::Rect(x_offset, y_offset, w_crop, h_crop)));
-
-    qDebug() << "[TEED] Edge map:" << edgeMap.cols << "x" << edgeMap.rows
-             << "-> Full:" << fullEdge.cols << "x" << fullEdge.rows;
-
+    // TEED 결과를 확대하지 않고 그대로 표시
     // CV_8UC1 -> QImage (Grayscale)
-    QImage result(fullEdge.cols, fullEdge.rows, QImage::Format_Grayscale8);
-    for (int y = 0; y < fullEdge.rows; y++) {
-        memcpy(result.scanLine(y), fullEdge.ptr(y), fullEdge.cols);
+    QImage result(edgeMap.cols, edgeMap.rows, QImage::Format_Grayscale8);
+    for (int y = 0; y < edgeMap.rows; y++) {
+        memcpy(result.scanLine(y), edgeMap.ptr(y), edgeMap.cols);
     }
 
     // Edge 이미지 저장 (Line Detection용)
     m_currentEdgeImage = result;
 
-    updateStatusBar(QString("TEED Edge Detection completed (%1x%2 -> %3x%4, offset: %5,%6)")
-                    .arg(edgeMap.cols).arg(edgeMap.rows)
-                    .arg(fullEdge.cols).arg(fullEdge.rows)
-                    .arg(x_offset).arg(y_offset));
+    updateStatusBar(QString("TEED Edge Detection completed (%1x%2)")
+                    .arg(edgeMap.cols).arg(edgeMap.rows));
 
     return result;
 }
@@ -1382,6 +1399,110 @@ void MainWindow::onAIClusteringRequested()
     }
 }
 
+void MainWindow::onAIFindIntersectionRequested()
+{
+    qDebug() << "[MainWindow] onAIFindIntersectionRequested called";
+
+    if (m_currentEdgeImage.isNull()) {
+        QMessageBox::warning(this, "Find Intersection Error",
+            "Edge image not available.\n\n"
+            "Please apply TEED Edge Detection first.");
+        return;
+    }
+
+    QImage result = applyTEEDFindIntersection(m_currentEdgeImage);
+
+    if (!result.isNull()) {
+        m_currentProcessedImage = result;
+        m_pOpenCVViewer->setImage(result);
+        m_pOpenCVViewer->setInfo(QString("TEED Intersection Found"));
+        updateStatusBar("TEED Find Intersection completed");
+    }
+}
+
+void MainWindow::onAIRunAllRequested()
+{
+    qDebug() << "[MainWindow] onAIRunAllRequested called";
+
+    // 시작 시간 측정
+    auto startTime = std::chrono::high_resolution_clock::now();
+
+    // Halcon 뷰어에서 현재 이미지 가져오기 (없으면 OpenCV 뷰어에서)
+    m_currentInputImage = m_pHalconViewer->getImage();
+    if (m_currentInputImage.isNull()) {
+        m_currentInputImage = m_pOpenCVViewer->getImage();
+    }
+
+    // 1. Edge Detection
+    if (m_currentInputImage.isNull()) {
+        QMessageBox::warning(this, "Run All Error",
+            "No input image loaded.\n\n"
+            "Please load an image first.");
+        return;
+    }
+
+    qDebug() << "[MainWindow] Input image size:" << m_currentInputImage.width() << "x" << m_currentInputImage.height();
+
+    updateStatusBar("Run All: Applying TEED Edge Detection...");
+    QApplication::processEvents();
+
+    QImage edgeResult = applyTEEDEdgeDetection(m_currentInputImage);
+    if (edgeResult.isNull()) {
+        QMessageBox::warning(this, "Run All Error", "TEED Edge Detection failed.");
+        return;
+    }
+    m_currentEdgeImage = edgeResult;
+
+    // 2. Find Intersection (Hough + Clustering + Intersection in one step)
+    updateStatusBar("Run All: Finding Intersection...");
+    QApplication::processEvents();
+
+    QImage finalResult = applyTEEDFindIntersection(m_currentEdgeImage);
+    if (finalResult.isNull()) {
+        QMessageBox::warning(this, "Run All Error", "Find Intersection failed.");
+        return;
+    }
+
+    // 종료 시간 측정
+    auto endTime = std::chrono::high_resolution_clock::now();
+    double totalTime = std::chrono::duration<double, std::milli>(endTime - startTime).count();
+
+    // 결과 표시
+    m_currentProcessedImage = finalResult;
+    m_pOpenCVViewer->setImage(finalResult);
+    m_pOpenCVViewer->setInfo(QString("Run All Completed"));
+
+    // 실행 시간 업데이트
+    AIPrevisionWidget* aiWidget = m_pProcessingPanel->getAIWidget();
+    if (aiWidget) {
+        aiWidget->setExecutionTime(totalTime);
+    }
+
+    updateStatusBar(QString("Run All completed in %1 ms").arg(totalTime, 0, 'f', 1));
+}
+
+void MainWindow::onAIShowOriginalSizeRequested()
+{
+    qDebug() << "[MainWindow] onAIShowOriginalSizeRequested called";
+
+    if (m_currentEdgeImage.isNull()) {
+        QMessageBox::warning(this, "Show Original Size Error",
+            "Edge image not available.\n\n"
+            "Please run TEED Edge Detection first.");
+        return;
+    }
+
+    QImage result = applyTEEDShowOriginalSize(m_currentEdgeImage);
+
+    if (!result.isNull()) {
+        m_currentProcessedImage = result;
+        m_pOpenCVViewer->setImage(result);
+        m_pOpenCVViewer->setInfo(QString("Original Size Result (%1x%2)")
+                                 .arg(result.width()).arg(result.height()));
+        updateStatusBar("Showing result on original size image");
+    }
+}
+
 QImage MainWindow::applyTEEDHoughLines(const QImage& edgeImage)
 {
     if (edgeImage.isNull()) {
@@ -1400,8 +1521,6 @@ QImage MainWindow::applyTEEDHoughLines(const QImage& edgeImage)
     }
 
     // Fnc_Vision_Pre_FITO를 사용하여 직선 추출
-    static Fnc_Vision_Pre_FITO visionProcessor;
-
     std::vector<TEEDLineInfo> hLines, vLines;
 
     // UI에서 파라미터 가져오기
@@ -1411,7 +1530,7 @@ QImage MainWindow::applyTEEDHoughLines(const QImage& edgeImage)
     float angleTolerance = m_pProcessingPanel->getAIWidget()->getAngleTolerance();
 
     // TEED_ExtractLines 호출
-    if (!visionProcessor.TEED_ExtractLines(edgeMat, hLines, vLines, threshold, minLength, maxGap, angleTolerance)) {
+    if (!m_visionProcessorForShutdown.TEED_ExtractLines(edgeMat, hLines, vLines, threshold, minLength, maxGap, angleTolerance)) {
         QMessageBox::warning(this, "Hough Lines Error", "Failed to extract lines from edge image.");
         return QImage();
     }
@@ -1419,14 +1538,9 @@ QImage MainWindow::applyTEEDHoughLines(const QImage& edgeImage)
     qDebug() << "[TEED Hough] Horizontal lines:" << hLines.size()
              << "Vertical lines:" << vLines.size();
 
-    // 원본 이미지에 직선 그리기
+    // Edge 이미지(608x512)에 직선 그리기
     cv::Mat result;
-    cv::Mat inputMat = QImageToCvMat(m_pHalconViewer->getImage());
-    if (inputMat.channels() == 1) {
-        cv::cvtColor(inputMat, result, cv::COLOR_GRAY2BGR);
-    } else {
-        result = inputMat.clone();
-    }
+    cv::cvtColor(edgeMat, result, cv::COLOR_GRAY2BGR);
 
     int width = result.cols;
     int height = result.rows;
@@ -1477,8 +1591,6 @@ QImage MainWindow::applyTEEDClustering(const QImage& edgeImage)
     }
 
     // Fnc_Vision_Pre_FITO를 사용하여 직선 추출 및 클러스터링
-    static Fnc_Vision_Pre_FITO visionProcessor;
-
     std::vector<TEEDLineInfo> hLines, vLines;
 
     // UI에서 파라미터 가져오기
@@ -1489,27 +1601,22 @@ QImage MainWindow::applyTEEDClustering(const QImage& edgeImage)
     float clusterDist = m_pProcessingPanel->getAIWidget()->getClusterDistance();
 
     // TEED_ExtractLines 호출
-    if (!visionProcessor.TEED_ExtractLines(edgeMat, hLines, vLines, threshold, minLength, maxGap, angleTolerance)) {
+    if (!m_visionProcessorForShutdown.TEED_ExtractLines(edgeMat, hLines, vLines, threshold, minLength, maxGap, angleTolerance)) {
         QMessageBox::warning(this, "Clustering Error", "Failed to extract lines from edge image.");
         return QImage();
     }
 
     // 클러스터링 수행
     std::vector<TEEDLineCluster> hClusters, vClusters;
-    visionProcessor.TEED_ClusterLines(hLines, hClusters, clusterDist);
-    visionProcessor.TEED_ClusterLines(vLines, vClusters, clusterDist);
+    m_visionProcessorForShutdown.TEED_ClusterLines(hLines, hClusters, clusterDist);
+    m_visionProcessorForShutdown.TEED_ClusterLines(vLines, vClusters, clusterDist);
 
     qDebug() << "[TEED Clustering] H clusters:" << hClusters.size()
              << "V clusters:" << vClusters.size();
 
-    // 원본 이미지에 최적 직선 그리기
+    // Edge 이미지(608x512)에 최적 직선 그리기
     cv::Mat result;
-    cv::Mat inputMat = QImageToCvMat(m_pHalconViewer->getImage());
-    if (inputMat.channels() == 1) {
-        cv::cvtColor(inputMat, result, cv::COLOR_GRAY2BGR);
-    } else {
-        result = inputMat.clone();
-    }
+    cv::cvtColor(edgeMat, result, cv::COLOR_GRAY2BGR);
 
     int width = result.cols;
     int height = result.rows;
@@ -1522,14 +1629,14 @@ QImage MainWindow::applyTEEDClustering(const QImage& edgeImage)
 
         cv::Point pt1(0, static_cast<int>(b));
         cv::Point pt2(width - 1, static_cast<int>(a * (width - 1) + b));
-        cv::line(result, pt1, pt2, cv::Scalar(0, 255, 0), 3);
+        cv::line(result, pt1, pt2, cv::Scalar(0, 255, 0), 2);
 
         // 텍스트로 직선 정보 표시
-        QString info = QString("Best H: y=%.3fx+%.1f (L:%.0f)")
-                       .arg(a).arg(b).arg(cluster.totalLength);
+        QString info = QString("Best H: y=%1x+%2 (L:%3)")
+                       .arg(a, 0, 'f', 3).arg(b, 0, 'f', 1).arg(cluster.totalLength, 0, 'f', 0);
         cv::putText(result, info.toStdString(),
                    cv::Point(10, static_cast<int>(b) - 5),
-                   cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
+                   cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 1);
     }
 
     // 최적 수직선 1개 그리기 (파란색) - 총 길이가 가장 긴 클러스터
@@ -1540,25 +1647,331 @@ QImage MainWindow::applyTEEDClustering(const QImage& edgeImage)
 
         cv::Point pt1(static_cast<int>(d), 0);
         cv::Point pt2(static_cast<int>(c * (height - 1) + d), height - 1);
-        cv::line(result, pt1, pt2, cv::Scalar(255, 0, 0), 3);
+        cv::line(result, pt1, pt2, cv::Scalar(255, 0, 0), 2);
 
         // 텍스트로 직선 정보 표시
-        QString info = QString("Best V: x=%.3fy+%.1f (L:%.0f)")
-                       .arg(c).arg(d).arg(cluster.totalLength);
+        QString info = QString("Best V: x=%1y+%2 (L:%3)")
+                       .arg(c, 0, 'f', 3).arg(d, 0, 'f', 1).arg(cluster.totalLength, 0, 'f', 0);
         cv::putText(result, info.toStdString(),
-                   cv::Point(static_cast<int>(d) + 5, 20),
-                   cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 0, 0), 1);
+                   cv::Point(static_cast<int>(d) + 5, 15),
+                   cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(255, 0, 0), 1);
     }
 
     // 요약 정보 표시
-    QString summary = QString("Best Lines (from H:%1, V:%2 clusters)")
+    QString summary = QString("Best Lines (H:%1, V:%2 clusters)")
                       .arg(hClusters.size()).arg(vClusters.size());
     cv::putText(result, summary.toStdString(),
                cv::Point(10, height - 10),
-               cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 0), 2);
+               cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(255, 255, 0), 1);
 
     // cv::Mat -> QImage 변환
     QImage resultImage = QImage((const uchar*)result.data, result.cols, result.rows,
                                 result.step, QImage::Format_RGB888).rgbSwapped();
     return resultImage.copy();
+}
+
+QImage MainWindow::applyTEEDFindIntersection(const QImage& edgeImage)
+{
+    if (edgeImage.isNull()) {
+        return QImage();
+    }
+
+    // QImage -> cv::Mat 변환
+    cv::Mat edgeMat;
+    if (edgeImage.format() == QImage::Format_Grayscale8) {
+        edgeMat = cv::Mat(edgeImage.height(), edgeImage.width(), CV_8UC1,
+                         (void*)edgeImage.constBits(), edgeImage.bytesPerLine()).clone();
+    } else {
+        QImage gray = edgeImage.convertToFormat(QImage::Format_Grayscale8);
+        edgeMat = cv::Mat(gray.height(), gray.width(), CV_8UC1,
+                         (void*)gray.constBits(), gray.bytesPerLine()).clone();
+    }
+
+    // UI에서 파라미터 가져오기
+    int threshold = m_pProcessingPanel->getAIWidget()->getThreshold();
+    int minLength = m_pProcessingPanel->getAIWidget()->getMinLength();
+    int maxGap = m_pProcessingPanel->getAIWidget()->getMaxGap();
+    float angleTolerance = m_pProcessingPanel->getAIWidget()->getAngleTolerance();
+    float clusterDist = m_pProcessingPanel->getAIWidget()->getClusterDistance();
+
+    // 1. TEED_ExtractLines 호출
+    std::vector<TEEDLineInfo> hLines, vLines;
+    if (!m_visionProcessorForShutdown.TEED_ExtractLines(edgeMat, hLines, vLines, threshold, minLength, maxGap, angleTolerance)) {
+        QMessageBox::warning(this, "Find Intersection Error", "Failed to extract lines from edge image.");
+        return QImage();
+    }
+
+    qDebug() << "[TEED FindIntersection] Horizontal lines:" << hLines.size()
+             << "Vertical lines:" << vLines.size();
+
+    // 2. TEED_ClusterLines 호출
+    std::vector<TEEDLineCluster> hClusters, vClusters;
+    m_visionProcessorForShutdown.TEED_ClusterLines(hLines, hClusters, clusterDist);
+    m_visionProcessorForShutdown.TEED_ClusterLines(vLines, vClusters, clusterDist);
+
+    qDebug() << "[TEED FindIntersection] H clusters:" << hClusters.size()
+             << "V clusters:" << vClusters.size();
+
+    // 결과 이미지 생성
+    cv::Mat result;
+    cv::cvtColor(edgeMat, result, cv::COLOR_GRAY2BGR);
+    int width = result.cols;
+    int height = result.rows;
+
+    // 수평선, 수직선이 없으면 에러
+    if (hClusters.empty() || vClusters.empty()) {
+        QString msg = QString("Not enough lines for intersection.\n\nHorizontal clusters: %1\nVertical clusters: %2")
+                      .arg(hClusters.size()).arg(vClusters.size());
+        QMessageBox::warning(this, "Find Intersection Error", msg);
+
+        // 현재 상태로 반환
+        QImage resultImage = QImage((const uchar*)result.data, result.cols, result.rows,
+                                    result.step, QImage::Format_RGB888).rgbSwapped();
+        return resultImage.copy();
+    }
+
+    // 최적 수평선 그리기 (녹색)
+    const auto& hCluster = hClusters[0];
+    float a = hCluster.coef1;
+    float b = hCluster.coef2;
+    cv::Point hPt1(0, static_cast<int>(b));
+    cv::Point hPt2(width - 1, static_cast<int>(a * (width - 1) + b));
+    cv::line(result, hPt1, hPt2, cv::Scalar(0, 255, 0), 2);
+
+    // 최적 수직선 그리기 (파란색)
+    const auto& vCluster = vClusters[0];
+    float c = vCluster.coef1;
+    float d = vCluster.coef2;
+    cv::Point vPt1(static_cast<int>(d), 0);
+    cv::Point vPt2(static_cast<int>(c * (height - 1) + d), height - 1);
+    cv::line(result, vPt1, vPt2, cv::Scalar(255, 0, 0), 2);
+
+    // 3. TEED_FindIntersection 호출
+    // 원본 이미지 크기 (2448x2048)
+    int origWidth = m_currentInputImage.width();
+    int origHeight = m_currentInputImage.height();
+
+    TEEDIntersectionResult intersection = m_visionProcessorForShutdown.TEED_FindIntersection(
+        hCluster, vCluster, width, height, origWidth, origHeight);
+
+    if (intersection.bFound) {
+        // 교차점 표시 (빨간색 원 + 십자)
+        cv::Point crossPt(static_cast<int>(intersection.cropX), static_cast<int>(intersection.cropY));
+
+        // 십자 표시
+        int crossSize = 15;
+        cv::line(result, cv::Point(crossPt.x - crossSize, crossPt.y),
+                 cv::Point(crossPt.x + crossSize, crossPt.y), cv::Scalar(0, 0, 255), 2);
+        cv::line(result, cv::Point(crossPt.x, crossPt.y - crossSize),
+                 cv::Point(crossPt.x, crossPt.y + crossSize), cv::Scalar(0, 0, 255), 2);
+
+        // 원 표시
+        cv::circle(result, crossPt, 10, cv::Scalar(0, 0, 255), 2);
+
+        // 좌표 텍스트 표시 (축소 이미지 좌표)
+        QString cropCoordText = QString("Crop: (%1, %2)")
+                                .arg(intersection.cropX, 0, 'f', 1)
+                                .arg(intersection.cropY, 0, 'f', 1);
+        cv::putText(result, cropCoordText.toStdString(),
+                   cv::Point(crossPt.x + 15, crossPt.y - 5),
+                   cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 0, 255), 1);
+
+        // 원본 좌표 텍스트 표시
+        QString origCoordText = QString("Orig: (%1, %2)")
+                                .arg(intersection.origX, 0, 'f', 1)
+                                .arg(intersection.origY, 0, 'f', 1);
+        cv::putText(result, origCoordText.toStdString(),
+                   cv::Point(crossPt.x + 15, crossPt.y + 15),
+                   cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 0, 255), 1);
+
+        // UI 결과 업데이트
+        AIPrevisionWidget* aiWidget = m_pProcessingPanel->getAIWidget();
+        if (aiWidget) {
+            aiWidget->setResult(intersection.cropX, intersection.cropY);
+            aiWidget->setOriginalCoord(intersection.origX, intersection.origY);
+        }
+
+        qDebug() << "[TEED FindIntersection] Found at crop(" << intersection.cropX << "," << intersection.cropY
+                 << ") -> orig(" << intersection.origX << "," << intersection.origY << ")";
+    } else {
+        QMessageBox::warning(this, "Find Intersection Error", "Failed to find intersection point.");
+    }
+
+    // 요약 정보 표시
+    QString summary = QString("Intersection: H=%1 V=%2")
+                      .arg(hClusters.size()).arg(vClusters.size());
+    cv::putText(result, summary.toStdString(),
+               cv::Point(10, height - 10),
+               cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(255, 255, 0), 1);
+
+    // cv::Mat -> QImage 변환
+    QImage resultImage = QImage((const uchar*)result.data, result.cols, result.rows,
+                                result.step, QImage::Format_RGB888).rgbSwapped();
+    return resultImage.copy();
+}
+
+QImage MainWindow::applyTEEDShowOriginalSize(const QImage& edgeImage)
+{
+    if (edgeImage.isNull() || m_currentInputImage.isNull()) {
+        return QImage();
+    }
+
+    // QImage -> cv::Mat 변환
+    cv::Mat edgeMat;
+    if (edgeImage.format() == QImage::Format_Grayscale8) {
+        edgeMat = cv::Mat(edgeImage.height(), edgeImage.width(), CV_8UC1,
+                         (void*)edgeImage.constBits(), edgeImage.bytesPerLine()).clone();
+    } else {
+        QImage gray = edgeImage.convertToFormat(QImage::Format_Grayscale8);
+        edgeMat = cv::Mat(gray.height(), gray.width(), CV_8UC1,
+                         (void*)gray.constBits(), gray.bytesPerLine()).clone();
+    }
+
+    // UI에서 파라미터 가져오기
+    int threshold = m_pProcessingPanel->getAIWidget()->getThreshold();
+    int minLength = m_pProcessingPanel->getAIWidget()->getMinLength();
+    int maxGap = m_pProcessingPanel->getAIWidget()->getMaxGap();
+    float angleTolerance = m_pProcessingPanel->getAIWidget()->getAngleTolerance();
+    float clusterDist = m_pProcessingPanel->getAIWidget()->getClusterDistance();
+
+    // 1. TEED_ExtractLines 호출
+    std::vector<TEEDLineInfo> hLines, vLines;
+    if (!m_visionProcessorForShutdown.TEED_ExtractLines(edgeMat, hLines, vLines, threshold, minLength, maxGap, angleTolerance)) {
+        QMessageBox::warning(this, "Show Original Size Error", "Failed to extract lines from edge image.");
+        return QImage();
+    }
+
+    // 2. TEED_ClusterLines 호출
+    std::vector<TEEDLineCluster> hClusters, vClusters;
+    m_visionProcessorForShutdown.TEED_ClusterLines(hLines, hClusters, clusterDist);
+    m_visionProcessorForShutdown.TEED_ClusterLines(vLines, vClusters, clusterDist);
+
+    // 원본 이미지 크기
+    int origWidth = m_currentInputImage.width();
+    int origHeight = m_currentInputImage.height();
+    int cropWidth = edgeMat.cols;
+    int cropHeight = edgeMat.rows;
+
+    // crop offset 계산
+    int h_crop = (origHeight / 32) * 32;
+    int w_crop = (origWidth / 32) * 32;
+    int y_offset = (origHeight - h_crop) / 2;
+    int x_offset = (origWidth - w_crop) / 2;
+
+    // 원본 이미지에 결과 그리기
+    cv::Mat origMat = QImageToCvMat(m_currentInputImage);
+    cv::Mat result;
+    if (origMat.channels() == 1) {
+        cv::cvtColor(origMat, result, cv::COLOR_GRAY2BGR);
+    } else if (origMat.channels() == 4) {
+        cv::cvtColor(origMat, result, cv::COLOR_BGRA2BGR);
+    } else {
+        result = origMat.clone();
+    }
+
+    // 수평선, 수직선이 없으면 결과 이미지만 반환
+    if (hClusters.empty() || vClusters.empty()) {
+        QString msg = QString("Not enough lines. H:%1, V:%2")
+                      .arg(hClusters.size()).arg(vClusters.size());
+        cv::putText(result, msg.toStdString(),
+                   cv::Point(10, 30),
+                   cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 0, 255), 2);
+
+        QImage resultImage = QImage((const uchar*)result.data, result.cols, result.rows,
+                                    result.step, QImage::Format_RGB888).rgbSwapped();
+        return resultImage.copy();
+    }
+
+    // 최적 수평선 그리기 (녹색) - 원본 좌표로 변환
+    const auto& hCluster = hClusters[0];
+    float a = hCluster.coef1;
+    float b = hCluster.coef2;
+    // 원본 좌표로 변환: x_orig = x_crop * 4 + x_offset, y_orig = y_crop * 4 + y_offset
+    // y = a*x + b (crop) -> y_orig = (a * x_crop + b) * 4 + y_offset
+    //                    -> y_orig = a * (x_orig - x_offset) / 4 * 4 + b * 4 + y_offset
+    //                    -> y_orig = a * (x_orig - x_offset) + b * 4 + y_offset
+    cv::Point hPt1(x_offset, static_cast<int>(b * 4 + y_offset));
+    cv::Point hPt2(origWidth - x_offset - 1, static_cast<int>(a * (cropWidth - 1) * 4 + b * 4 + y_offset));
+    cv::line(result, hPt1, hPt2, cv::Scalar(0, 255, 0), 3);
+
+    // 최적 수직선 그리기 (파란색) - 원본 좌표로 변환
+    const auto& vCluster = vClusters[0];
+    float c = vCluster.coef1;
+    float d = vCluster.coef2;
+    cv::Point vPt1(static_cast<int>(d * 4 + x_offset), y_offset);
+    cv::Point vPt2(static_cast<int>((c * (cropHeight - 1) + d) * 4 + x_offset), origHeight - y_offset - 1);
+    cv::line(result, vPt1, vPt2, cv::Scalar(255, 0, 0), 3);
+
+    // 3. TEED_FindIntersection 호출
+    TEEDIntersectionResult intersection = m_visionProcessorForShutdown.TEED_FindIntersection(
+        hCluster, vCluster, cropWidth, cropHeight, origWidth, origHeight);
+
+    if (intersection.bFound) {
+        // 교차점 표시 (빨간색 원 + 십자) - 원본 좌표
+        cv::Point crossPt(static_cast<int>(intersection.origX), static_cast<int>(intersection.origY));
+
+        // 십자 표시 (원본 크기에 맞게 크게)
+        int crossSize = 40;
+        cv::line(result, cv::Point(crossPt.x - crossSize, crossPt.y),
+                 cv::Point(crossPt.x + crossSize, crossPt.y), cv::Scalar(0, 0, 255), 3);
+        cv::line(result, cv::Point(crossPt.x, crossPt.y - crossSize),
+                 cv::Point(crossPt.x, crossPt.y + crossSize), cv::Scalar(0, 0, 255), 3);
+
+        // 원 표시
+        cv::circle(result, crossPt, 25, cv::Scalar(0, 0, 255), 3);
+
+        // 좌표 텍스트 표시 (3단계 크게: 1.0 -> 2.5)
+        QString coordText = QString("(%1, %2)")
+                            .arg(intersection.origX, 0, 'f', 1)
+                            .arg(intersection.origY, 0, 'f', 1);
+        cv::putText(result, coordText.toStdString(),
+                   cv::Point(crossPt.x + 50, crossPt.y + 20),
+                   cv::FONT_HERSHEY_SIMPLEX, 2.5, cv::Scalar(0, 0, 255), 4);
+    }
+
+    // 요약 정보 표시 (3단계 크게: 1.0 -> 2.5)
+    QString summary = QString("Original Size: %1x%2 | Intersection: (%3, %4)")
+                      .arg(origWidth).arg(origHeight)
+                      .arg(intersection.origX, 0, 'f', 1)
+                      .arg(intersection.origY, 0, 'f', 1);
+    cv::putText(result, summary.toStdString(),
+               cv::Point(10, origHeight - 40),
+               cv::FONT_HERSHEY_SIMPLEX, 2.5, cv::Scalar(255, 255, 0), 4);
+
+    // cv::Mat -> QImage 변환
+    QImage resultImage = QImage((const uchar*)result.data, result.cols, result.rows,
+                                result.step, QImage::Format_RGB888).rgbSwapped();
+    return resultImage.copy();
+}
+
+// ========================================================================
+// TEED 서버 시작/종료
+// ========================================================================
+
+void MainWindow::initTEEDServer()
+{
+    qDebug() << "[MainWindow] Starting TEED server...";
+
+    // Python 서버 시작 및 공유 메모리 연결
+    if (m_visionProcessorForShutdown.TEED_Connect())
+    {
+        qDebug() << "[MainWindow] TEED server started and connected successfully";
+    }
+    else
+    {
+        qDebug() << "[MainWindow] TEED server connection failed (will retry on first use)";
+    }
+}
+
+void MainWindow::stopTEEDServer()
+{
+    qDebug() << "[MainWindow] Stopping TEED server...";
+
+    if (m_visionProcessorForShutdown.TEED_IsConnected())
+    {
+        qDebug() << "[MainWindow] TEED server is connected, disconnecting...";
+        m_visionProcessorForShutdown.TEED_Disconnect();
+    }
+
+    qDebug() << "[MainWindow] TEED server stopped";
 }

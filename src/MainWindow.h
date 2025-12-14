@@ -10,6 +10,7 @@
 #include "EdgeProcessingWidget.h"
 #include "LineDetectionWidget.h"
 #include "AIPrevisionWidget.h"
+#include "Vision/Fnc_Vision_Pre_FITO.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -90,6 +91,9 @@ private slots:
     void onAIApplyRequested();
     void onAIHoughLinesRequested();
     void onAIClusteringRequested();
+    void onAIFindIntersectionRequested();
+    void onAIRunAllRequested();
+    void onAIShowOriginalSizeRequested();
     void onAIResetRequested();
 
 private:
@@ -153,6 +157,8 @@ private:
     QImage applyTEEDEdgeDetection(const QImage& input); // TEED Edge Detection
     QImage applyTEEDHoughLines(const QImage& edgeImage); // TEED Hough Lines
     QImage applyTEEDClustering(const QImage& edgeImage); // TEED Clustering
+    QImage applyTEEDFindIntersection(const QImage& edgeImage); // TEED Find Intersection
+    QImage applyTEEDShowOriginalSize(const QImage& edgeImage); // Show result on original size image
 
     // Image conversion helper
     cv::Mat QImageToCvMat(const QImage& image);
@@ -161,6 +167,11 @@ private:
     QImage m_currentInputImage;
     QImage m_currentProcessedImage;
     QImage m_currentEdgeImage;  // Edge 처리 결과 (Line Detection용)
+
+    // TEED Vision Processor (서버 종료용)
+    Fnc_Vision_Pre_FITO m_visionProcessorForShutdown;
+    void initTEEDServer();
+    void stopTEEDServer();
 };
 
 #endif // MAINWINDOW_H

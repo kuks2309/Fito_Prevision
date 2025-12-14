@@ -8,6 +8,7 @@
 // Forward declarations
 class LineDetectionWidget;
 class AIPrevisionWidget;
+class HalconVisionWidget;
 
 /**
  * @brief 이미지 처리 패널 (TabWidget 컨테이너)
@@ -26,14 +27,14 @@ public:
         TAB_EDGE = 0,
         TAB_LINE = 1,
         TAB_AI_PREVISION = 2,
-        TAB_CORNER = 3,
-        TAB_MORPHOLOGY = 4
+        TAB_HALCON_VISION = 3
     };
 
     // 위젯 접근자
     EdgeProcessingWidget* getEdgeWidget() const { return m_pEdgeWidget; }
     LineDetectionWidget* getLineWidget() const { return m_pLineWidget; }
     AIPrevisionWidget* getAIWidget() const { return m_pAIWidget; }
+    HalconVisionWidget* getHalconWidget() const { return m_pHalconWidget; }
 
     // 현재 탭
     int getCurrentTab() const;
@@ -52,8 +53,7 @@ private:
     EdgeProcessingWidget* m_pEdgeWidget;
     LineDetectionWidget* m_pLineWidget;
     AIPrevisionWidget* m_pAIWidget;
-    // CornerDetectionWidget* m_pCornerWidget;  // 향후 구현
-    // MorphologyWidget* m_pMorphologyWidget;    // 향후 구현
+    HalconVisionWidget* m_pHalconWidget;
 
     void setupTabs();
 };

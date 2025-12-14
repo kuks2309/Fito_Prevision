@@ -25,6 +25,12 @@ AIPrevisionWidget::AIPrevisionWidget(QWidget *parent) :
             this, &AIPrevisionWidget::onHoughLinesClicked);
     connect(ui->btnClustering, &QPushButton::clicked,
             this, &AIPrevisionWidget::onClusteringClicked);
+    connect(ui->btnFindIntersection, &QPushButton::clicked,
+            this, &AIPrevisionWidget::onFindIntersectionClicked);
+    connect(ui->btnRunAll, &QPushButton::clicked,
+            this, &AIPrevisionWidget::onRunAllClicked);
+    connect(ui->btnShowOriginalSize, &QPushButton::clicked,
+            this, &AIPrevisionWidget::onShowOriginalSizeClicked);
     connect(ui->btnReset, &QPushButton::clicked,
             this, &AIPrevisionWidget::onResetClicked);
     connect(ui->btnSaveParams, &QPushButton::clicked,
@@ -107,6 +113,25 @@ float AIPrevisionWidget::getClusterDistance() const
     return static_cast<float>(ui->spinClusterDist->value());
 }
 
+void AIPrevisionWidget::setResult(double posX, double posY)
+{
+    ui->labelResult->setText(QString("Intersection: X=%1, Y=%2")
+                             .arg(posX, 0, 'f', 2)
+                             .arg(posY, 0, 'f', 2));
+}
+
+void AIPrevisionWidget::setOriginalCoord(double posX, double posY)
+{
+    ui->labelOriginalCoord->setText(QString("Original: X=%1, Y=%2")
+                                    .arg(posX, 0, 'f', 2)
+                                    .arg(posY, 0, 'f', 2));
+}
+
+void AIPrevisionWidget::setExecutionTime(double ms)
+{
+    ui->labelExecutionTime->setText(QString("Execution Time: %1 ms").arg(ms, 0, 'f', 2));
+}
+
 void AIPrevisionWidget::onAlgorithmSelected(int row, int column)
 {
     Q_UNUSED(column);
@@ -133,6 +158,21 @@ void AIPrevisionWidget::onHoughLinesClicked()
 void AIPrevisionWidget::onClusteringClicked()
 {
     emit clusteringRequested();
+}
+
+void AIPrevisionWidget::onFindIntersectionClicked()
+{
+    emit findIntersectionRequested();
+}
+
+void AIPrevisionWidget::onRunAllClicked()
+{
+    emit runAllRequested();
+}
+
+void AIPrevisionWidget::onShowOriginalSizeClicked()
+{
+    emit showOriginalSizeRequested();
 }
 
 void AIPrevisionWidget::onResetClicked()
